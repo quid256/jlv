@@ -16,9 +16,7 @@ func checkErr(err error, message string) {
 }
 
 type (
-	jsonLogFile []jsonLogLine
-
-	jsonLogLine struct {
+	logEntry struct {
 		timestamp time.Time
 		caller    string
 		level     string
@@ -27,7 +25,7 @@ type (
 	}
 )
 
-func parseJSONLogFile(filename string) jsonLogFile {
+func parseJSONLogFile(filename string) []logEntry {
 	lf, err := os.Open(filename)
 	if err != nil {
 		panic("Unable to read specified file!")
@@ -35,7 +33,7 @@ func parseJSONLogFile(filename string) jsonLogFile {
 	defer lf.Close()
 
 	dec := json.NewDecoder(lf)
-	var f jsonLogFile
+	var f []logEntry
 
 	for {
 		var data map[string]interface{}
@@ -49,7 +47,7 @@ func parseJSONLogFile(filename string) jsonLogFile {
 		level := data["level"].(string)
 		message := data["message"].(string)
 
-		f = append(f, jsonLogLine{
+		f = append(f, logEntry{
 			timestamp: logTime,
 			caller:    caller,
 			level:     level,
@@ -69,6 +67,14 @@ func (r rect) inset() rect {
 	return rect{
 		r.x0 + 1, r.y0 + 1, r.x1 - 1, r.y1 - 1,
 	}
+}
+
+func (r rect) height() int {
+	return r.y1 - r.y0 + 1
+}
+
+func (r rect) dims() (int, int) {
+	return (r.x1 - r.x0 + 1), (r.y1 - r.y0 + 1)
 }
 
 func drawFrame(s tcell.Screen, r rect, name string) {
