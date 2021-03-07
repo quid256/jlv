@@ -40,7 +40,7 @@ func (l *logViewer) init(filename string) {
 		file:         l.file,
 		starredLines: make(map[int]struct{}),
 	}
-	l.jv = jsonView{file: l.file}
+	l.jv = jsonView{entry: l.file[0]}
 	l.qv = queryView{}
 }
 
@@ -111,7 +111,7 @@ func (l *logViewer) handleKey(key *tcell.EventKey) (shouldQuit bool) {
 			l.lv.scroll(l.screen, -1)
 		}
 
-		l.jv.setEntry(l.screen, l.lv.getEntry())
+		l.jv.setEntry(l.screen, l.lv.currentMessage())
 	}
 
 	l.screen.Show()
@@ -122,18 +122,21 @@ func (l *logViewer) handleKey(key *tcell.EventKey) (shouldQuit bool) {
 func (l *logViewer) executeProgram(prog *vm.Program) {
 	defer l.lv.draw(l.screen)
 
-	l.lv.starredLines = make(map[int]struct{})
-
 	if prog == nil {
+		l.lv.setStarredLines(nil)
 		return
 	}
+
+	var starredLines []int
 
 	for i, line := range l.file {
 		result, err := expr.Run(prog, line.rest)
 		if err == nil && result.(bool) {
-			l.lv.starredLines[i] = struct{}{}
+			starredLines = append(starredLines, i)
 		}
 	}
+
+	l.lv.setStarredLines(starredLines)
 }
 
 func (l *logViewer) resize() {

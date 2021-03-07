@@ -11,15 +11,11 @@ type jsonView struct {
 	// The location that the log will be displayed in (inclusive of endpoints)
 	frame rect
 
-	// The list of log entries
-	file []logEntry
-
-	// The entry of the file to show
-	selEntry int
+	entry logEntry
 }
 
-func (jv *jsonView) setEntry(screen tcell.Screen, entry int) {
-	jv.selEntry = entry
+func (jv *jsonView) setEntry(screen tcell.Screen, entry logEntry) {
+	jv.entry = entry
 	jv.draw(screen)
 }
 
@@ -38,7 +34,7 @@ func (jv *jsonView) draw(screen tcell.Screen) {
 		}
 	}
 
-	b, err := json.MarshalIndent(jv.file[jv.selEntry].rest, "", "  ")
+	b, err := json.MarshalIndent(jv.entry.rest, "", "  ")
 	if err != nil {
 		b = []byte("[error] Failed to marshal json entry!")
 	}

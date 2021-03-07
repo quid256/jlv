@@ -16,7 +16,8 @@ type logView struct {
 	file []logEntry
 
 	// The lines that are matched by the search query
-	starredLines map[int]struct{}
+	starredLinesList []int
+	starredLines     map[int]struct{}
 
 	// The display mode for starred/unstarred lines.
 	//  - If true, all entries are displayed and starred entries are annotated with a star
@@ -28,28 +29,83 @@ type logView struct {
 	offset, cursor int
 }
 
-func (l *logView) getEntry() int {
-	return l.cursor + l.offset
+func (l *logView) setStarredLines(starred []int) {
+	curEntry := l.cursor + l.offset
+
+	if l.starredLinesList != nil {
+		curEntry = l.starredLinesList[curEntry]
+	}
+
+	l.starredLines = make(map[int]struct{})
+
+	var newEntry int
+
+	if starred == nil {
+		newEntry = curEntry
+	} else {
+		for i, line := range starred {
+			if line <= curEntry {
+				newEntry = i
+			}
+
+			l.starredLines[i] = struct{}{}
+		}
+	}
+
+	l.starredLinesList = starred
+
+	height := l.frame.inset().height()
+	newOrigin := newEntry - height/2
+	if newOrigin < 0 {
+		newOrigin = 0
+	} else if newOrigin+height-1 >= l.bufferLength() {
+		newOrigin = l.bufferLength() - height
+	}
+
+	newCursor := newEntry - newOrigin
+
+	l.cursor = newCursor
+	l.offset = newOrigin
 }
 
 func (l *logView) nextMatch(screen tcell.Screen) {
-	pos := l.getEntry()
-	for j := pos + 1; j < len(l.file); j++ {
-		if _, ok := l.starredLines[j]; ok {
-			l.scroll(screen, j-pos)
-			return
-		}
-	}
+	// pos := l.getEntry()
+	// for j := pos + 1; j < len(l.file); j++ {
+	// 	if _, ok := l.starredLines[j]; ok {
+	// 		l.scroll(screen, j-pos)
+	// 		return
+	// 	}
+	// }
 }
 
 func (l *logView) prevMatch(screen tcell.Screen) {
-	pos := l.getEntry()
-	for j := pos - 1; j >= 0; j-- {
-		if _, ok := l.starredLines[j]; ok {
-			l.scroll(screen, j-pos)
-			return
-		}
+	// pos := l.getEntry()
+	// for j := pos - 1; j >= 0; j-- {
+	// 	if _, ok := l.starredLines[j]; ok {
+	// 		l.scroll(screen, j-pos)
+	// 		return
+	// 	}
+	// }
+}
+
+func (l *logView) bufferLength() int {
+	if len(l.starredLinesList) > 0 {
+		return len(l.starredLinesList)
 	}
+
+	return len(l.file)
+}
+
+func (l *logView) messageAt(ind int) logEntry {
+	if len(l.starredLinesList) > 0 {
+		return l.file[l.starredLinesList[ind]]
+	}
+
+	return l.file[ind]
+}
+
+func (l *logView) currentMessage() logEntry {
+	return l.messageAt(l.cursor + l.offset)
 }
 
 func (l *logView) scroll(screen tcell.Screen, amnt int) {
@@ -57,43 +113,30 @@ func (l *logView) scroll(screen tcell.Screen, amnt int) {
 
 	contentFrame := l.frame.inset()
 	height := contentFrame.y1 - contentFrame.y0 + 1
-	fileLength := len(l.file)
+	fileLength := l.bufferLength()
 
-	oy := l.offset
-	cy := l.cursor
-	newCy := cy + amnt
+	newIndex := l.offset + l.cursor + amnt
 
-	if newCy < 0 {
-		if oy+newCy < 0 {
-			l.offset = 0
-		} else {
-			l.offset = oy + newCy
-		}
+	if newIndex < 0 {
+		newIndex = 0
+	}
+	if newIndex >= fileLength {
+		newIndex = fileLength - 1
+	}
+	if l.offset > newIndex {
+		l.offset = newIndex
 		l.cursor = 0
 		l.draw(screen)
-		return
-	}
-
-	if newCy >= height {
-		maxOrigin := fileLength - height
-		if maxOrigin < 0 {
-			maxOrigin = 0
-		}
-
-		if oy+newCy-(height-1) >= maxOrigin {
-			l.offset = maxOrigin
-		} else {
-			l.offset = oy + newCy - (height - 1)
-		}
+	} else if l.offset+height-1 < newIndex {
+		l.offset = newIndex - height + 1
 		l.cursor = height - 1
 		l.draw(screen)
-		return
+	} else {
+		oldCursor := l.cursor
+		l.cursor = newIndex - l.offset
+		l.renderLogMessage(screen, oldCursor, oldCursor+l.offset)
+		l.renderLogMessage(screen, l.cursor, l.cursor+l.offset)
 	}
-
-	oldCursor := l.cursor
-	l.cursor = newCy
-	l.renderLogMessage(screen, oldCursor, oldCursor+l.offset)
-	l.renderLogMessage(screen, l.cursor, l.cursor+l.offset)
 }
 
 func (l *logView) resize(screen tcell.Screen, newFrame rect) {
@@ -106,9 +149,13 @@ func (l *logView) resize(screen tcell.Screen, newFrame rect) {
 		l.cursor = int(math.Round(cursorFrac))
 		l.offset = prevIndex - l.cursor
 
-		if l.offset+l.frame.inset().height() > len(l.file) {
-			l.offset = len(l.file) - l.frame.inset().height() - 1
+		if l.offset+l.frame.inset().height() > l.bufferLength() {
+			l.offset = l.bufferLength() - l.frame.inset().height() - 1
 		}
+		if l.offset < 0 {
+			l.offset = 0
+		}
+
 		l.cursor = prevIndex - l.offset
 	}
 
@@ -144,7 +191,7 @@ func (l *logView) draw(screen tcell.Screen) {
 
 // Redraw the percentage displayed at the bottom of the frame
 func (l *logView) renderPercent(screen tcell.Screen) {
-	pct := ((l.cursor + l.offset) * 100) / len(l.file)
+	pct := ((l.cursor + l.offset) * 100) / l.bufferLength()
 	pctStr := []rune(fmt.Sprintf(" %02d%% ", pct))
 
 	for i, r := range pctStr {
@@ -153,22 +200,23 @@ func (l *logView) renderPercent(screen tcell.Screen) {
 }
 
 func (l *logView) renderLogMessage(screen tcell.Screen, loc int, ind int) {
+	var textList []styledRune
 	style := tcell.StyleDefault.Reverse(loc == l.cursor)
 
-	var textList []styledRune
+	if ind < l.bufferLength() {
+		line := l.messageAt(ind)
 
-	var indicator = "  "
-	if _, ok := l.starredLines[ind]; ok {
-		indicator = "* "
+		var indicator = "  "
+		if _, ok := l.starredLines[ind]; ok {
+			indicator = "* "
+		}
+
+		textList = append(textList, styleString(indicator, style.Reverse(false).Bold(true))...)
+		textList = append(textList, styleString(line.timestamp.Format(time.StampMilli)+" ", style.Foreground(tcell.GetColor("#4C566A")))...)
+		textList = append(textList, getColoredLvlCode(line.level, style)...)
+		textList = append(textList, styledRune{' ', style.Foreground(tcell.GetColor("#4C566A"))})
+		textList = append(textList, styleString(line.message, style)...)
 	}
-
-	line := l.file[ind]
-
-	textList = append(textList, styleString(indicator, style.Reverse(false).Bold(true))...)
-	textList = append(textList, styleString(line.timestamp.Format(time.Stamp)+" ", style.Foreground(tcell.GetColor("#4C566A")))...)
-	textList = append(textList, getColoredLvlCode(line.level, style)...)
-	textList = append(textList, styledRune{' ', style.Foreground(tcell.GetColor("#4C566A"))})
-	textList = append(textList, styleString(line.message, style)...)
 
 	// Render the text to the screen and empty all of the characters occurring after the finish of
 	// line

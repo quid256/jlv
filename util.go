@@ -42,7 +42,16 @@ func parseJSONLogFile(filename string) []logEntry {
 			break
 		}
 
-		logTime, _ := time.Parse(time.RFC3339, data["time"].(string))
+		var logTime time.Time
+
+		timeString, ok := data["time"].(string)
+		if !ok {
+			timeMS := data["time"].(float64)
+			logTime = time.Unix(0, int64(timeMS)*int64(time.Millisecond)/int64(time.Nanosecond))
+		} else {
+			logTime, _ = time.Parse(time.RFC3339, timeString)
+		}
+
 		caller := data["caller"].(string)
 		level := data["level"].(string)
 		message := data["message"].(string)
