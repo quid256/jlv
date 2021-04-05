@@ -11,11 +11,33 @@ type jsonView struct {
 	// The location that the log will be displayed in (inclusive of endpoints)
 	frame rect
 
-	entry logEntry
+	// The scrolling amount of the log
+	ind int
+
+	bufferLines []string
 }
 
-func (jv *jsonView) setEntry(screen tcell.Screen, entry logEntry) {
-	jv.entry = entry
+func (jv *jsonView) setEntry(entry logEntry) {
+	b, err := json.MarshalIndent(entry.rest, "", "  ")
+	if err != nil {
+		b = []byte("[error] Failed to marshal json entry!")
+	}
+
+	jv.bufferLines = strings.Split(string(b), "\n")
+	jv.ind = 0
+}
+
+func (jv *jsonView) scroll(screen tcell.Screen, amnt int) {
+	jv.ind += amnt
+
+	if jv.ind+jv.frame.height()-2 > len(jv.bufferLines) {
+		jv.ind = len(jv.bufferLines) - jv.frame.height() + 2
+	}
+
+	if jv.ind < 0 {
+		jv.ind = 0
+	}
+
 	jv.draw(screen)
 }
 
@@ -34,23 +56,16 @@ func (jv *jsonView) draw(screen tcell.Screen) {
 		}
 	}
 
-	b, err := json.MarshalIndent(jv.entry.rest, "", "  ")
-	if err != nil {
-		b = []byte("[error] Failed to marshal json entry!")
-	}
-
-	lines := strings.Split(string(b), "\n")
-
-	for i, line := range lines {
-		if contentFrame.y0+i > contentFrame.y1 {
+	for i := jv.ind; i < len(jv.bufferLines) && (i-jv.ind) < contentFrame.height(); i++ {
+		if contentFrame.y0+(i-jv.ind) > contentFrame.y1 {
 			break
 		}
 
-		for j, char := range line {
+		for j, char := range jv.bufferLines[i] {
 			if (contentFrame.x0 + j) > contentFrame.x1 {
 				break
 			}
-			screen.SetContent(contentFrame.x0+j, contentFrame.y0+i, char, nil, tcell.StyleDefault)
+			screen.SetContent(contentFrame.x0+j, contentFrame.y0+(i-jv.ind), char, nil, tcell.StyleDefault)
 		}
 	}
 }

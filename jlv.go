@@ -40,7 +40,10 @@ func (l *logViewer) init(filename string) {
 		file:         l.file,
 		starredLines: make(map[int]struct{}),
 	}
-	l.jv = jsonView{entry: l.file[0]}
+
+	l.jv = jsonView{}
+	l.jv.setEntry(l.file[0])
+
 	l.qv = queryView{}
 }
 
@@ -78,6 +81,14 @@ func (l *logViewer) handleKey(key *tcell.EventKey) (shouldQuit bool) {
 				l.lv.scroll(l.screen, l.lv.frame.inset().height())
 			case 'K':
 				l.lv.scroll(l.screen, -l.lv.frame.inset().height())
+			case 'u':
+				l.jv.scroll(l.screen, +1)
+				l.screen.Show()
+				return false
+			case 'i':
+				l.jv.scroll(l.screen, -1)
+				l.screen.Show()
+				return false
 			case 'G':
 				l.lv.scroll(l.screen, len(l.file))
 			case 'g':
@@ -111,7 +122,8 @@ func (l *logViewer) handleKey(key *tcell.EventKey) (shouldQuit bool) {
 			l.lv.scroll(l.screen, -1)
 		}
 
-		l.jv.setEntry(l.screen, l.lv.currentMessage())
+		l.jv.setEntry(l.lv.currentMessage())
+		l.jv.draw(l.screen)
 	}
 
 	l.screen.Show()
