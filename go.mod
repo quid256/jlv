@@ -1,4 +1,4 @@
-module jlv
+module github.com/quid256/jlv
 
 go 1.16
 
